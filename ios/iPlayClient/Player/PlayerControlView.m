@@ -7,10 +7,12 @@
 
 #import "PlayerControlView.h"
 #import "UIView+FindViewController.h"
+#import "PlayerSystemVolumeView.h"
 
 static NSUInteger const kIconSize = 48;
 
 @interface PlayerControlView ()
+@property (nonatomic, strong) MPVolumeView<PlayerSystemVolumeView> *volumeView;
 @end
 
 @implementation PlayerControlView
@@ -20,6 +22,7 @@ static NSUInteger const kIconSize = 48;
     if (self) {
         _isControlsVisible = YES;
         _iconSize = kIconSize;
+        _brightnessValue = UIScreen.mainScreen.brightness;
         [self _setupUI];
         [self _layout];
         [self _bind];
@@ -31,12 +34,13 @@ static NSUInteger const kIconSize = 48;
     [self addSubview:self.playButton];
     [self addSubview:self.fullscreenButton];
     [self addSubview:self.captionButton];
-    [self addSubview:self.settingButton];
+    [self addSubview:self.audioButton];
     [self addSubview:self.progressBar];
     [self addSubview:self.sliderBar];
     [self addSubview:self.durationLabel];
     [self addSubview:self.titleLabel];
     [self addSubview:self.indicator];
+    [self addSubview:self.volumeView];
 }
 
 - (void)_layout {
@@ -72,19 +76,12 @@ static NSUInteger const kIconSize = 48;
         make.center.equalTo(self);
         make.size.equalTo(@(self.iconSize));
     }];
-
-    [self.settingButton remakeConstraints:^(MASConstraintMaker *make) {
-        @strongify(self);
-        make.size.equalTo(@(self.iconSize));
-        make.top.equalTo(self).with.offset(insets.top ?: 24);
-        make.right.equalTo(self.progressBar);
-    }];
     
     [self.fullscreenButton remakeConstraints:^(MASConstraintMaker *make) {
         @strongify(self);
         make.size.equalTo(@(self.iconSize));
-        make.centerY.equalTo(self.settingButton);
-        make.right.equalTo(self.settingButton.left).with.offset(-10);
+        make.top.equalTo(self).with.offset(insets.top ?: 24);
+        make.right.equalTo(self.progressBar);
     }];
   
     [self.captionButton remakeConstraints:^(MASConstraintMaker *make) {
@@ -93,14 +90,28 @@ static NSUInteger const kIconSize = 48;
         make.centerY.equalTo(self.fullscreenButton);
         make.right.equalTo(self.fullscreenButton.left).with.offset(-10);
     }];
+    
+    [self.audioButton remakeConstraints:^(MASConstraintMaker *make) {
+        @strongify(self);
+        make.size.equalTo(@(self.iconSize));
+        make.centerY.equalTo(self.fullscreenButton);
+        make.right.equalTo(self.captionButton.left).with.offset(-10);
+    }];
 
     [self.indicator remakeConstraints:^(MASConstraintMaker *make) {
         @strongify(self);
         make.center.equalTo(self);
     }];
+    
+    [self.volumeView remakeConstraints:^(MASConstraintMaker *make) {
+        @strongify(self);
+        make.top.equalTo(self.top);
+        make.centerX.equalTo(self);
+    }];
 }
 
 - (void)_bind {
+    self.volumeValue = self.defaultVolumeValue;
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onPlayTap:)];
     self.playButton.userInteractionEnabled = YES;
     [self.playButton addGestureRecognizer:tap];
@@ -109,6 +120,13 @@ static NSUInteger const kIconSize = 48;
     self.fullscreenButton.userInteractionEnabled = YES;
     [self.fullscreenButton addGestureRecognizer:fullscreenTap];
   
+    UITapGestureRecognizer *audioTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onSelectAudioTap:)];
+    self.audioButton.userInteractionEnabled = YES;
+    [self.audioButton addGestureRecognizer:audioTap];
+    
+    UITapGestureRecognizer *captionTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onSelectCaptionTap:)];
+    self.captionButton.userInteractionEnabled = YES;
+    [self.captionButton addGestureRecognizer:captionTap];
 
     self.progressBar.observedProgress = self.progress;
     [self.sliderBar addTarget:self action:@selector(_seekToPlay:) forControlEvents:UIControlEventValueChanged];
@@ -116,13 +134,23 @@ static NSUInteger const kIconSize = 48;
     @weakify(self);
     [RACObserve(self, isFullscreen) subscribeNext:^(id  _Nullable x) {
         @strongify(self);
-        NSString *iconName = self.isFullscreen ? @"arrow.up.right.and.arrow.down.left" : @"viewfinder";
+        NSString *iconName = self.isFullscreen ? @"player/fullscreen_exit" : @"player/fullscreen";
         [self _updateIcon:self.fullscreenButton icon:iconName];
     }];
     
     [RACObserve(self, title) subscribeNext:^(id  _Nullable x) {
         @strongify(self);
         self.titleLabel.text = self.title;
+    }];
+    
+    [[RACObserve(self, brightnessValue) deliverOnMainThread] subscribeNext:^(id  _Nullable x) {
+        @strongify(self);
+        UIScreen.mainScreen.brightness = self.brightnessValue;
+    }];
+    
+    [[[RACObserve(self, volumeValue) deliverOnMainThread] skip:1] subscribeNext:^(id  _Nullable x) {
+        @strongify(self);
+        [self updateVolume:self.volumeValue];
     }];
 }
 
@@ -146,8 +174,27 @@ static NSUInteger const kIconSize = 48;
     self.isControlsVisible = NO;
 }
 
+- (void)updateVolume:(CGFloat)volume {
+    UISlider *slider = nil;
+    if ([self.volumeView respondsToSelector:@selector(volumeSlider)]) {
+        slider = self.volumeView.volumeSlider;
+    } else {
+        UIView *view = self.volumeView.subviews.firstObject;
+        if (![view isKindOfClass:UISlider.class]) return;
+        slider = (UISlider *)view;
+    }
+    slider.value = volume;
+}
+
+- (CGFloat)defaultVolumeValue {
+    UIView *view = self.volumeView.subviews.firstObject;
+    if (![view isKindOfClass:UISlider.class]) return AVAudioSession.sharedInstance.outputVolume;
+    UISlider *slider = (UISlider *)view;
+    return slider.value;
+}
+
 - (void)onPlayTap:(id)sender {
-    [self _changePlayButtonIcon:self.player.isPlaying];
+    [self _changePlayButtonIcon:!self.player.isPlaying];
     if (self.player.isPlaying) {
         [self.player pause];
     } else {
@@ -170,15 +217,32 @@ static NSUInteger const kIconSize = 48;
     }
 }
 
+- (void)onSelectAudioTap:(id)sender {
+    if ([self.parentView respondsToSelector:@selector(onSelectAudioTap:)]) {
+        [self.parentView performSelector:@selector(onSelectAudioTap:) withObject:sender];
+    }
+}
+
+- (void)onSelectCaptionTap:(id)sender {
+    if ([self.parentView respondsToSelector:@selector(onSelectCaptionTap:)]) {
+        [self.parentView performSelector:@selector(onSelectCaptionTap:) withObject:sender];
+    }
+}
+
+- (void)updatePlayState:(BOOL)isPlaying {
+    [self _changePlayButtonIcon:isPlaying];
+}
+
 - (void)_changePlayButtonIcon:(BOOL)isPlaying {
-    NSString *imageName = isPlaying ? @"play" : @"pause";
+    NSString *imageName = isPlaying ? @"player/pause" : @"player/play";
     [self _updateIcon:self.playButton icon:imageName];
 }
+
 
 #pragma mark - Getter
 - (UIView *)playButton {
     if (!_playButton) {
-        UIView *view = [self _makeControlView:@"pause"];
+        UIView *view = [self _makeControlView:@"player/pause"];
         _playButton = view;
     }
     return _playButton;
@@ -186,7 +250,7 @@ static NSUInteger const kIconSize = 48;
 
 - (UIView *)fullscreenButton {
     if (!_fullscreenButton) {
-        UIView *view = [self _makeControlView:@"viewfinder"];
+        UIView *view = [self _makeControlView:@"player/fullscreen"];
         _fullscreenButton = view;
     }
     return _fullscreenButton;
@@ -194,17 +258,17 @@ static NSUInteger const kIconSize = 48;
 
 - (UIView *)captionButton {
     if (!_captionButton) {
-        UIView *view = [self _makeControlView:@"captions.bubble"];
+        UIView *view = [self _makeControlView:@"player/caption"];
         _captionButton = view;
     }
     return _captionButton;
 }
 
-- (UIView *)settingButton {
-    if (!_settingButton) {
-        _settingButton = [self _makeControlView:@"gear"];
+- (UIView *)audioButton {
+    if (!_audioButton) {
+        _audioButton = [self _makeControlView:@"player/volume"];
     }
-    return _settingButton;
+    return _audioButton;
 }
 
 - (UIProgressView *)progressBar {
@@ -227,9 +291,9 @@ static NSUInteger const kIconSize = 48;
     return _progress;
 }
 
-- (UISlider *)sliderBar {
+- (PlayerSlider *)sliderBar {
     if (!_sliderBar) {
-        _sliderBar = [[UISlider alloc] init];
+        _sliderBar = [[PlayerSlider alloc] init];
         _sliderBar.tintColor = UIColor.whiteColor;
         _sliderBar.continuous = NO;
     }
@@ -257,8 +321,6 @@ static NSUInteger const kIconSize = 48;
     return _titleLabel;
 }
 
-
-
 - (UIActivityIndicatorView *)indicator {
     if (!_indicator) {
         _indicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
@@ -268,13 +330,7 @@ static NSUInteger const kIconSize = 48;
 
 - (UIView *)_makeControlView:(NSString *)iconName {
     UIImage *icon = nil;
-    if (@available(iOS 15.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithHierarchicalColor:UIColor.whiteColor];
-        icon = [UIImage systemImageNamed:iconName withConfiguration:config];
-    } else {
-        icon = [[UIImage systemImageNamed:iconName] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAutomatic];
-    }
-    icon = [icon imageWithTintColor:UIColor.whiteColor];
+    icon = [[UIImage imageNamed:iconName] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAutomatic];
     UIImageView *imageView = [[UIImageView alloc] initWithImage:icon];
     imageView.contentMode = UIViewContentModeScaleAspectFit;
 
@@ -297,17 +353,11 @@ static NSUInteger const kIconSize = 48;
 }
 
 - (void)_updateIcon:(UIView *)view icon:(NSString *)iconName {
-    UIImageView *imageView = ( UIImageView *)view.subviews.firstObject;
+    UIImageView *imageView = (UIImageView *)view.subviews.firstObject;
     if (![imageView isKindOfClass:UIImageView.class]) {
         return;
     }
-    UIImage *icon = nil;
-    if (@available(iOS 15.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithHierarchicalColor:UIColor.whiteColor];
-        icon = [UIImage systemImageNamed:iconName withConfiguration:config];
-    } else {
-        icon = [[UIImage systemImageNamed:iconName] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAutomatic];
-    }
+    UIImage *icon = [[UIImage imageNamed:iconName] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAutomatic];
     imageView.image = icon;
 }
 
@@ -321,6 +371,14 @@ static NSUInteger const kIconSize = 48;
     return _timeFormatter;
 }
 
+- (MPVolumeView<PlayerSystemVolumeView> *)volumeView {
+    if (!_volumeView) {
+        _volumeView = (MPVolumeView<PlayerSystemVolumeView> *)[[MPVolumeView alloc] init];
+        // hide system volume indicator
+        _volumeView.alpha = 0.00001;
+    }
+    return _volumeView;
+}
 
 #pragma mark - Setter
 
@@ -330,7 +388,7 @@ static NSUInteger const kIconSize = 48;
         self.playButton,
         self.fullscreenButton,
         self.captionButton,
-        self.settingButton,
+        self.audioButton,
     ];
     for (UIView *view in views) {
         view.layer.cornerRadius = iconSize / 2;

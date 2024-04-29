@@ -1,10 +1,10 @@
 import {PropsWithNavigation} from '@global';
-import {printException} from '@helper/log';
+import {logger, printException} from '@helper/log';
 import {useAppDispatch, useAppSelector} from '@hook/store';
 import { fetchAlbumMediaAsync } from '@store/embySlice';
-import {selectThemeBasicStyle, selectThemedPageStyle} from '@store/themeSlice';
+import {LayoutType, selectThemeBasicStyle, selectThemedPageStyle} from '@store/themeSlice';
 import {ListView, kFullScreenStyle} from '@view/ListView';
-import {MediaCard} from '@view/MediaCard';
+import {MediaCard, MediaCardInLine} from '@view/MediaCard';
 import {Spin} from '@view/Spin';
 import _ from 'lodash';
 import React, {useEffect, useState} from 'react';
@@ -21,17 +21,26 @@ const style = StyleSheet.create({
 });
 
 
-export function Page({route}: PropsWithNavigation<'album'>) {
+export function Page({ navigation, route}: PropsWithNavigation<'album'>) {
     const data = useAppSelector(state => state.emby?.source?.albumMedia?.[route.params.albumId]);
     const [loading, setLoading] = useState(true);
     const theme = useAppSelector(selectThemeBasicStyle);
     const pageStyle = useAppSelector(selectThemedPageStyle);
     const dispatch = useAppDispatch()
+    const layoutType = useAppSelector(state => state.theme.albumLayoutType);
     const cached = data?.length ?? 0 > 0
+
     useEffect(() => {
         setLoading(!cached);
+        logger.info("fetch album media", route.params.albumId)
         const id = route.params.albumId;
-        dispatch(fetchAlbumMediaAsync(id))
+        const query = {
+            id, 
+            options: {
+                SortBy: "DateLastContentAdded,SortName"
+            }
+        }
+        dispatch(fetchAlbumMediaAsync(query))
             .then(() => {
                 setLoading(false)
             })
@@ -54,17 +63,29 @@ export function Page({route}: PropsWithNavigation<'album'>) {
                 <ListView
                     items={data}
                     style={{width: '100%', flex: 1, padding: 10}}
+                    typeForIndex={i => layoutType ?? LayoutType.Card}
                     layoutForType={(i, dim) => {
-                        dim.width = rowItemWidth;
-                        dim.height = 200;
+                        if (i === LayoutType.Card) {
+                            dim.width = rowItemWidth;
+                            dim.height = 200;
+                        } else {
+                            dim.width = kFullScreenStyle.width;
+                            dim.height = 200;
+                        }
                     }}
                     onVisibleIndicesChanged={onVisibleIndicesChanged}
                     onEndReached={onEndReached}
-                    render={(media, i) => (
+                    render={(media, i, type) => (
+                        type == LayoutType.Card ?
                         <MediaCard
                             key={media?.Id ?? `media-${i}`}
                             media={media}
                             theme={theme}
+                        /> :
+                        <MediaCardInLine
+                        key={media?.Id ?? `media-${i}`}
+                        media={media}
+                        theme={theme}
                         />
                     )}
                 />

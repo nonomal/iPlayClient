@@ -6,6 +6,8 @@ import {Toast} from '@helper/toast';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useState} from 'react';
 import {printException} from '@helper/log';
+import { useAppDispatch } from '@hook/store';
+import { markFavoriteAsync } from '@store/embySlice';
 
 const style = StyleSheet.create({
     icon: {
@@ -21,21 +23,24 @@ const style = StyleSheet.create({
 
 export interface LikeProps {
     id: number;
+    width?: number;
     isFavorite: boolean;
-    emby?: Emby|null;
     style?: Partial<ViewStyle>;
 }
 
-export function Like({id, isFavorite, emby, style: extStyle}: LikeProps) {
+export function Like({id, width = style.favorite.width, isFavorite, style: extStyle}: LikeProps) {
     const [favorite, setFavorite] = useState(isFavorite);
     const inset = useSafeAreaInsets();
+    const dispatch = useAppDispatch();
     const markFavorite = (id: number, favorite: boolean) => {
-        emby?.markFavorite?.(id, favorite)
-            .then(data => {
-                setFavorite(data.IsFavorite);
+        dispatch(markFavoriteAsync({id, favorite}))
+            .then(res => {
+                const isFavorite = res.payload
+                if (typeof isFavorite !== 'boolean') return
+                setFavorite(isFavorite);
                 Toast.show({
                     type: 'success',
-                    text1: data.IsFavorite ? '已收藏' : '已取消收藏',
+                    text1: isFavorite ? '已收藏' : '已取消收藏',
                     topOffset: inset.top + 2.5,
                 });
             })
@@ -48,12 +53,12 @@ export function Like({id, isFavorite, emby, style: extStyle}: LikeProps) {
             onPress={() => markFavorite(Number(id ?? 0), !favorite)}>
             {favorite ? (
                 <FavoriteIconOff
-                    width={style.favorite.width}
+                    width={width}
                     style={style.favorite}
                 />
             ) : (
                 <FavoriteIconOn
-                    width={style.favorite.width}
+                    width={width}
                     style={style.favorite}
                 />
             )}

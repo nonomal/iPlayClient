@@ -6,7 +6,10 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import "VideoPlayer.h"
+#import "PlayerNumberValueView.h"
+#import "PlayerSlider.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -17,21 +20,25 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) id<VideoPlayer> player;
 @property (nonatomic, weak) UIView *parentView;
 @property (nonatomic, strong) UIView *playButton;
-@property (nonatomic, strong) UIView *fullscreenButton;
+@property (nonatomic, strong) UIView *audioButton;
 @property (nonatomic, strong) UIView *captionButton;
-@property (nonatomic, strong) UIView *settingButton;
+@property (nonatomic, strong) UIView *fullscreenButton;
 @property (nonatomic, strong) UIProgressView *progressBar;
 @property (nonatomic, strong) NSProgress *progress;
-@property (nonatomic, strong) UISlider *sliderBar;
+@property (nonatomic, strong) PlayerSlider *sliderBar;
 @property (nonatomic, strong) UILabel *durationLabel;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIActivityIndicatorView *indicator;
 @property (nonatomic, strong) NSDateComponentsFormatter *timeFormatter;
 @property (nonatomic, assign) BOOL isControlsVisible;
 @property (nonatomic, assign) BOOL isFullscreen;
+@property (nonatomic, assign) CGFloat volumeValue;
+@property (nonatomic, assign) CGFloat brightnessValue;
 
 - (void)hideControls;
 - (void)showControls;
+- (void)updateVolume:(CGFloat)volume;
+- (void)updatePlayState:(BOOL)isPlaying;
 @end
 
 NS_ASSUME_NONNULL_END

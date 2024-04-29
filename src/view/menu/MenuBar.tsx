@@ -2,7 +2,7 @@ import {TabNavigation} from '@global';
 import {useAppDispatch, useAppSelector} from '@hook/store';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import {getActiveMenu, switchToMenu, toggleSwitchSiteDialog} from '@store/menuSlice';
-import {Animated, Pressable, StyleSheet, TouchableOpacity, View} from 'react-native';
+import {Animated, Pressable, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {OSType, isOS} from '@helper/device';
 import {useEffect, useMemo, useRef} from 'react';
 import {switchRoute, updateMenuBarHeight} from '@store/themeSlice';
@@ -112,6 +112,7 @@ const kIconSize = {
 }
 
 const kInactiveOpacity = 0.25;
+const hitSlop = {top: 10, bottom: 10, left: 10, right: 10};
 
 export function MenuBar() {
     const active = useAppSelector(getActiveMenu);
@@ -162,10 +163,11 @@ export function MenuBar() {
             <Pressable
                 key={i}
                 style={style.menuItem}
+                hitSlop={hitSlop}
                 onLongPress={() => item?.onLongPress?.(dispatch)}
                 onPress={() => onActive(item.type)}>
                 <View>
-                    {<item.icon {...kIconSize} opacity={active===item.type ? 1.0 : kInactiveOpacity} />}
+                    <item.icon {...kIconSize} opacity={active===item.type ? 1.0 : kInactiveOpacity} />
                 </View>
             </Pressable>
         ))

@@ -6,8 +6,8 @@ import { ActorCard } from "@view/ActorCard";
 import { SeasonCardList } from "@view/SeasonCard";
 import { Tag } from "@view/Tag";
 import { ExternalPlayer } from "@view/player/ExternalPlayer";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DimensionValue, ImageStyle, ScrollView, StyleProp, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Image } from '@view/Image';
 import { Toast } from "@helper/toast";
 import { Spin, SpinBox } from "@view/Spin";
@@ -16,7 +16,7 @@ import { getPlayUrl } from "@api/play";
 import { Video } from "@view/Video";
 import { preferedSize, windowWidth } from "@helper/device";
 import { selectThemeBasicStyle, selectThemedPageStyle } from "@store/themeSlice";
-import { printException } from "@helper/log";
+import { logger, printException } from "@helper/log";
 import { updatePlayerState } from "@store/playerSlice";
 import { PlayEventType } from "@view/mpv/Player";
 import { PlaybackStateType } from "@view/mpv/type";
@@ -54,26 +54,21 @@ const style = StyleSheet.create({
     },
     playButton: {
         position: "absolute",
-        width: 72,
-        height: 72,
+        width: 56,
+        height: 56,
         aspectRatio: 1,
         overflow: "hidden",
-        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
         borderRadius: 36,
         top: "50%",
         left: "50%",
-        transform: [{translateX: -36}, {translateY: -36}],
         alignItems: "center",
         justifyContent: "center",
     },
     play: {
         flexGrow: 0,
         flexShrink: 0,
-        width: 50,
-        height: 50,
         aspectRatio: 1,
-        tintColor: "white",
-        color: "white",
     },
     link: {
         textAlign: "center",
@@ -84,6 +79,9 @@ const style = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
+    },
+    icon: {
+        width: 24,
     }
 })
 
@@ -138,13 +136,16 @@ export function Page({route, navigation}: PropsWithNavigation<"movie">) {
             .then(setUrl)
             .catch(printException)
         return () => {
+            logger.info("reset url")
+            setUrl(undefined)
             dispatch(updatePlayerState({
                 status: "stopped",
             }))
         }
-    }, [])
+    }, [movie.Id])
 
     useEffect(() => {
+        setIsPlaying(false)
         setInfoLoading(true)
         emby?.getMedia?.(Number(movie.Id))
             .then(setDetail)
@@ -197,12 +198,19 @@ export function Page({route, navigation}: PropsWithNavigation<"movie">) {
     }
     const logoUrl = emby?.imageUrl?.(movie.Id, movie.BackdropImageTags?.[0], "Logo")
     const isPlayable = movie.Type === "Movie" || movie.Type === "Episode" 
-    const iconSize = preferedSize(24, 36, windowWidth/10)
+    const iconSize = preferedSize(24, 56, windowWidth/9)
+    const layout = useMemo(() => ({
+        cover: {
+            width: "100%" as DimensionValue, 
+            height: windowWidth * 9/16 + pageStyle.paddingTop
+        }
+    }), [pageStyle.paddingTop, windowWidth])
+
     const playButtonStyle = {
         ...style.playButton,
         width: iconSize,
         height: iconSize,
-        transform: [{translateX: -iconSize/2}, {translateY: -iconSize/2}]
+        transform: [{translateX: -iconSize/2}, {translateY: -iconSize/2 + pageStyle.paddingTop/2}]
     }
     return (
         <ScrollView style={{backgroundColor}}
@@ -221,10 +229,12 @@ export function Page({route, navigation}: PropsWithNavigation<"movie">) {
             />
             </>
              : null}
-            {url && isPlaying ? null : <Image style={{width: "100%", aspectRatio: 4/3}} source={{ uri: poster}} />}
+            {url && isPlaying ? null : 
+            <Image style={layout.cover} source={{ uri: poster}} />
+            }
             {isPlayable && !isPlaying ?
             <TouchableOpacity style={playButtonStyle} onPress={playVideo} activeOpacity={1.0}>
-                <PlayIcon width={playButtonStyle.width/2} height={playButtonStyle.height/2} style={style.play} />
+                <PlayIcon style={style.play} />
             </TouchableOpacity> : null}
             {loading ? <Spin color={themeStyle.color} size="small" /> : null}
             </View>
@@ -232,13 +242,18 @@ export function Page({route, navigation}: PropsWithNavigation<"movie">) {
             <Image style={style.logo}
                 resizeMode="contain"
                 source={{uri: logoUrl}} />
+            {detail ?
+            <>
             <Like id={Number(movie.Id)}
-                emby={emby}
+                width={style.icon.width}
                 isFavorite={detail?.UserData?.IsFavorite ?? false}
              />
-            <PlayCount 
+            <PlayCount
+                width={style.icon.width + 5}
                 style={{color: themeStyle.color}}
                 count={detail?.UserData?.PlayCount ?? 0} />
+            </>
+            : null }
             </View>
             <View style={style.tags}>
                 {detail?.Genres.map((genre, index) => <Tag key={index}>{genre}</Tag>)}
@@ -261,7 +276,9 @@ export function Page({route, navigation}: PropsWithNavigation<"movie">) {
                 演职人员
             </Text> 
             : null}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal 
+                contentContainerStyle={{minWidth: "100%"}}
+                showsHorizontalScrollIndicator={false}>
             {detail?.People.map((actor, index) => 
                 <ActorCard key={index} 
                     theme={themeStyle} 

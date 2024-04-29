@@ -9,6 +9,7 @@ import { EmbySite } from "@model/EmbySite";
 import { Version } from "@helper/device";
 import { UserData } from "@model/UserData";
 import { PlaybackData, kPlaybackData } from "@model/PlaybackData";
+import { logger } from "@helper/log";
 
 export const EMBY_CLIENT_HEADERS = {
     "X-Emby-Client": Version.displayName,
@@ -162,7 +163,7 @@ export async function getItem(site: EmbySite, options: ItemOptions) {
         SortOrder: "Ascending",
         IncludeItemTypes: type,
         Recursive: true,
-        Fields: "BasicSyncInfo,CanDelete,Container,PrimaryImageAspectRatio,Prefix",
+        Fields: "BasicSyncInfo,Overview,CanDelete,Container,PrimaryImageAspectRatio,Prefix",
         StartIndex: page * 50,
         EnableImageTypes: "Primary,Backdrop,Thumb",
         ImageTypeLimit: 1,
@@ -185,19 +186,21 @@ export const kEmbyItemPageSize = 50
 export type CollectionOptions = {
     StartIndex?: number
     Limit?: number
+    SortBy?: string
 }
 export async function getCollection(site: EmbySite, cid: number, type: "Series"|"Movie" = "Series", {
     StartIndex = 0,
-    Limit = kEmbyItemPageSize
+    Limit = kEmbyItemPageSize,
+    SortBy = "DateCreated,SortName"
 }: CollectionOptions) {
     const uid = site.user.User.Id
     const params = {
         UserId: site.user.User.Id,
-        SortBy: "SortName",
+        SortBy,
         SortOrder: "Ascending",
         IncludeItemTypes: type,
         Recursive: true,
-        Fields: "BasicSyncInfo,CanDelete,Container,PrimaryImageAspectRatio,Prefix",
+        Fields: "BasicSyncInfo,SortName,Overview,CanDelete,Container,PrimaryImageAspectRatio,Prefix,DateCreated",
         ParentId: cid,
         EnableImageTypes: "Primary,Backdrop,Thumb",
         ImageTypeLimit: 1,

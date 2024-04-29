@@ -1,4 +1,4 @@
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { listenerMiddleware } from './middleware/Listener';
 import { RootState } from '.';
 import { createAppAsyncThunk } from './type';
@@ -8,11 +8,20 @@ import { EmbyConfig } from '@helper/env';
 import { Emby } from '@api/emby';
 import { View, ViewDetail } from '@model/View';
 import { PlaybackInfo } from '@model/PlaybackInfo';
-import _ from 'lodash';
+import _, { get, Many } from 'lodash';
 import { Media } from '@model/Media';
 import { Map } from '@model/Map';
 import { Actor } from '@model/Actor';
 import { logger } from '@helper/log';
+import { CollectionOptions } from '@api/view';
+import { DEFAULT_AVATOR_URL } from '@helper/image';
+
+export enum SortType {
+    NameAsc,
+    NameDesc,
+    AddedDateAsc,
+    AddedDateDesc,
+}
 
 interface EmbyState {
     site: EmbySite|null;
@@ -23,7 +32,10 @@ interface EmbyState {
         latestMedias?: Media[][]
         actors?: Map<string, Actor>
         albumMedia?: Map<string, Media[]>
+        resume?: Media[]
+        recommendations?: Media[]
     }
+    sortType?: SortType
 }
 
 const initialState: EmbyState = {
@@ -122,14 +134,35 @@ export const fetchLatestMediaAsync = createAppAsyncThunk<(Media[]|undefined)[]|u
     return medias
 })
 
-export const fetchAlbumMediaAsync = createAppAsyncThunk("emby/album/media", async (id: string, config) => {
+export const fetchResumeMediaAsync = createAppAsyncThunk<Media[]|undefined, void>("emby/resume", async (_, config) => {
     const state = await config.getState()
     const emby = state.emby.emby
+    const medias = await emby?.getResume?.()
+    return medias
+})
+
+export const searchMediaAsync = createAppAsyncThunk<Media[]|undefined, string>("emby/search", async (keyword, config) => {
+    const state = await config.getState()
+    const emby = state.emby.emby
+    const data = await emby?.getItemWithName?.(keyword)
+    return data?.Items
+})
+
+export interface AlbumQueryParams {
+    id: string,
+    options?: CollectionOptions
+}
+
+export const fetchAlbumMediaAsync = createAppAsyncThunk("emby/album/media", async (params: string|AlbumQueryParams, config) => {
+    const state = await config.getState()
+    const emby = state.emby.emby
+    const id = typeof params === 'string' ? params : params.id
     const album = await emby?.getMedia?.(Number(id));
     const type = album?.CollectionType === 'tvshows' ? 'Series' : 'Movie';
     let startIdx = 0
     const data = await emby?.getCollection?.(Number(id), type, {
         StartIndex: startIdx,
+        ...(typeof params === 'object' ? params.options : {})
     });
     const total = data?.TotalRecordCount;
     if (!total) return null
@@ -148,7 +181,7 @@ export const fetchAlbumMediaAsync = createAppAsyncThunk("emby/album/media", asyn
         }
     }
     return {
-        id,
+        id: album?.Id ?? id,
         items
     }
 })
@@ -165,6 +198,25 @@ export const fetchPlaybackAsync = createAppAsyncThunk<PlaybackInfo|undefined, nu
         MaxStreamingBitrate: videoConfig.MaxStreamingBitrate
     })
     return data
+})
+
+export type MarkFavoriteParams = {
+    id: number,
+    favorite: boolean
+}
+
+export const markFavoriteAsync = createAppAsyncThunk<boolean, MarkFavoriteParams>("emby/favorite", async ({id, favorite}, config) => {
+    const state = await config.getState()
+    const emby = state.emby.emby
+    const data = await emby?.markFavorite?.(id, favorite);
+    return data?.IsFavorite ?? false
+})
+
+export const fetchRecommendationsAsync = createAppAsyncThunk<Media[]|undefined, void>("emby/recommendations", async (_, config) => {
+    const state = await config.getState()
+    const emby = state.emby.emby
+    const data = await emby?.searchRecommend?.()
+    return data?.Items
 })
 
 export const slice = createSlice({
@@ -194,11 +246,39 @@ export const slice = createSlice({
         removeSite: (state, action: PayloadAction<string>) => {
             const id = action.payload
             state.sites = state.sites?.filter(site => site.id !== id)
-        }
+        },
+        updateAlbumSortType: (state, action: PayloadAction<SortType>) => {
+            const sortType = action.payload
+            state.sortType = sortType
+            const albums = state.source.albumMedia
+            if (!albums) return
+            const keywords = sortType == SortType.NameAsc ? ["SortName"] : ["DateCreated", "SortName"]
+            Object.entries(albums).forEach(([key, medias]) => {
+                if (!medias) return
+                const sortedMedias = _.sortBy(medias, keywords)
+                albums[key] = sortedMedias
+            })
+            state.source.albumMedia = albums
+        },
+        updateToNextAlbumSortType: (state) => {
+            const sortType = state.sortType
+            const newSortType = ((sortType ?? 0) + 1)%4
+            state.sortType = newSortType
+            const albums = state.source.albumMedia
+            if (!albums) return
+            const keywords = newSortType == SortType.NameAsc ? ["SortName"] : ["DateCreated", "SortName"]
+            const order: Many<'asc'|'desc'> = newSortType % 2 == 0 ? ['asc', 'asc'] : ['desc', 'desc']
+            Object.entries(albums).forEach(([key, medias]) => {
+                if (!medias) return
+                const sortedMedias = _.orderBy(medias, keywords, order)
+                albums[key] = sortedMedias
+            })
+            state.source.albumMedia = albums
+        },
     },
     extraReducers: builder => {
         builder.addCase(loginToSiteAsync.pending, state => {
-            if (state.site) state.site.status = 'loading';
+
         })
         .addCase(loginToSiteAsync.fulfilled, (state, action) => {
             const site = action.payload
@@ -259,12 +339,36 @@ export const slice = createSlice({
                 }
             }
         })
+        .addCase(fetchResumeMediaAsync.fulfilled, (state, action) => {
+            const medias = action.payload
+            if (!medias) return
+            state.source.resume = medias
+        })
+        .addCase(fetchRecommendationsAsync.fulfilled, (state, action) => {
+            const medias = action.payload
+            if (!medias) return
+            state.source.recommendations = medias
+        })
     },
 });
 
-export const { switchToSite, removeSite, updateCurrentEmbySite, patchCurrentEmbySite } = slice.actions;
-export const getActiveEmbySite = (state: RootState) => state.emby;
+export const { 
+    switchToSite, removeSite,
+    updateCurrentEmbySite, 
+    patchCurrentEmbySite,
+    updateAlbumSortType,
+    updateToNextAlbumSortType
+} = slice.actions;
 
+export const getActiveEmbySite = (state: RootState) => state.emby;
+export const getImageUrl = (id: string | number, options: string) => 
+    (state: RootState) => state.emby.emby?.imageUrl?.(id, options)
+
+export const getEndpoint = (state: RootState) => state.emby.site?.server
+export const getUserId = (state: RootState) => state.emby.site?.user?.User?.Id
+export const getAvatarUrl = createSelector([
+    getEndpoint, getUserId
+], (endpoint, id) => endpoint && id ? `${endpoint.protocol}://${endpoint.host}:${endpoint.port}${endpoint.path}emby/Users/${id}/Images/Primary?height=152&quality=90` : DEFAULT_AVATOR_URL)
 
 listenerMiddleware.startListening({
     actionCreator: loginToSiteAsync.fulfilled,

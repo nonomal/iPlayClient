@@ -1,17 +1,15 @@
 import { PropsWithNavigation } from '@global';
-import { OSType, isIOS, isOS } from '@helper/device';
+import { Device } from '@helper/device';
 import { printException } from '@helper/log';
 import { useAppDispatch, useAppSelector } from '@hook/store';
-import { fetchEmbyAlbumAsync, patchCurrentEmbySite, updateCurrentEmbySite } from '@store/embySlice';
+import { fetchEmbyAlbumAsync, patchCurrentEmbySite } from '@store/embySlice';
 import { selectThemedPageStyle } from '@store/themeSlice';
 import { SiteResource } from '@view/SiteResource';
 import { StatusBar } from '@view/StatusBar';
-import { set } from 'lodash';
 import React, {useEffect, useState} from 'react';
 import {
     Button,
     RefreshControl,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     View,
@@ -31,7 +29,6 @@ export function Page({navigation}: PropsWithNavigation<'home'>) {
     const site = useAppSelector(state => state.emby?.site)
     const emby = useAppSelector(state => state.emby?.emby)
     const dispatch = useAppDispatch()
-    const [etag, setEtag] = useState(Date.now().toString())
     const pageStyle = useAppSelector(selectThemedPageStyle)
     useEffect(() => {
         if (!site?.server || !site?.user) {
@@ -55,7 +52,6 @@ export function Page({navigation}: PropsWithNavigation<'home'>) {
     const [refreshing, setRefreshing] = useState(false)
     const onRefresh = () => {
         setRefreshing(true)
-        setEtag(Date.now().toString())
         dispatch(fetchEmbyAlbumAsync())
             .then(() => {
                 setRefreshing(false)
@@ -67,7 +63,8 @@ export function Page({navigation}: PropsWithNavigation<'home'>) {
             <StatusBar />
             <ScrollView
                 showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator={Device.isDesktop}
+                nestedScrollEnabled={true}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 style={{flex: 1}}>
                 {site?.server && site?.user ? <SiteResource /> : <Button title="添加站点" onPress={goToLogin} />}

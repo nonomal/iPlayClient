@@ -7,6 +7,7 @@ import { Tag } from "./Tag";
 import { Like } from "./like/Like";
 import { PlayCount } from "./counter/PlayCount";
 import { ThemeBasicStyle } from "@global";
+import { getImageUrl } from "@store/embySlice";
 
 const DEFULT_OVERVIEW = `数据源中缺少相关描述
 Data source lacks relevant description`
@@ -38,7 +39,7 @@ const style = StyleSheet.create({
     },
     overview: {
         color: "gray",
-        maxHeight: 100
+        maxHeight: 128
     },
     No: {
         overflow: "hidden",
@@ -47,13 +48,7 @@ const style = StyleSheet.create({
         bottom: 10,
     },
     icon: {
-        width: 32,
-    },
-    favorite: {
-        width: 32,
-        height: 32,
-        flexShrink: 0,
-        flexGrow: 0,
+        width: 24,
     },
     actionBar: {
         flexDirection: "row",
@@ -64,35 +59,34 @@ const style = StyleSheet.create({
 
 export interface EpisodeCardProps {
     style?: Partial<ViewStyle>
-    emby?: Emby|null;
     episode: Episode;
     onPress?: (episode: Episode) => void;
     theme?: ThemeBasicStyle
 }
 
-export function EpisodeCard({style: extraStyle, theme, emby, episode, onPress}: EpisodeCardProps) {
-    const thumbUrl = emby?.imageUrl?.(episode.Id, episode.ImageTags.Primary)
-    const posterUrl = emby?.imageUrl?.(episode.SeasonId, episode.ImageTags.Primary)
+export function EpisodeCard({style: extraStyle, theme, episode, onPress}: EpisodeCardProps) {
+    const thumbUrl = useAppSelector(getImageUrl(episode.Id, episode.ImageTags.Primary))
+    const posterUrl = useAppSelector(getImageUrl(episode.SeasonId, episode.ImageTags.Primary))
     return (
         <TouchableOpacity activeOpacity={1.0} onPress={() => onPress?.(episode)}>
         <View style={{...style.basic, ...theme, ...extraStyle}}>
-            <Image style={{...style.cover, aspectRatio: episode.PrimaryImageAspectRatio}}
+            <Image style={{...style.cover, aspectRatio: 16/9}}
                 fallbackImages={[posterUrl ?? ""]}
                 source={{uri: thumbUrl}} />
             <View style={{...style.text, ...theme}}>
                 <Text style={{...style.title, ...theme}}>{episode.Name}</Text>
                 <Text style={{...style.overview, ...theme}}
-                    numberOfLines={10} 
-                    ellipsizeMode="tail"
-                    >
+                    numberOfLines={6} 
+                    ellipsizeMode="tail">
                     {episode.Overview ?? DEFULT_OVERVIEW}
                 </Text>
                 <View style={style.actionBar}>
                 <Like id={Number(episode.Id ?? 0)}
-                    emby={emby}
+                    width={style.icon.width}
                     isFavorite={episode.UserData.IsFavorite}
                     />
                 <PlayCount 
+                    width={style.icon.width + 6}
                     style={theme}
                     count={episode?.UserData?.PlayCount ?? 0} />
                 </View>

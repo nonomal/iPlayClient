@@ -1,10 +1,12 @@
 import { PropsWithNavigation } from "@global";
+import { windowHeight } from "@helper/device";
 import { printException } from "@helper/log";
 import { useAppDispatch, useAppSelector } from "@hook/store";
 import { Media } from "@model/Media";
 import { fetchEmbyActorAsync, fetchEmbyActorWorksAsync } from "@store/embySlice";
 import { selectThemeBasicStyle, selectThemedPageStyle } from "@store/themeSlice";
 import { Image } from "@view/Image";
+import { ListView, kFullScreenStyle } from "@view/ListView";
 import { MediaCard } from "@view/MediaCard";
 import { Spin } from "@view/Spin";
 import { StatusBar } from "@view/StatusBar";
@@ -54,11 +56,9 @@ export function Page({route: {params: {id, actor}}}: PropsWithNavigation<"actor"
     const [media, setMedia] = useState<Media[]>([])
     const dispatch = useAppDispatch()
 
-    console.log(actorData)
     useEffect(() => {
         const aid = id || actor?.Id
         if (!aid) return
-        console.log("fetch actor: ", aid)
         setLoading(true)
         dispatch(fetchEmbyActorAsync(aid))
             .then(() => setLoading(false))
@@ -71,29 +71,34 @@ export function Page({route: {params: {id, actor}}}: PropsWithNavigation<"actor"
             .catch(printException)
     }, [id, actor])
 
+    const rowItemWidth = (kFullScreenStyle.width - 20) / Math.floor((kFullScreenStyle.width - 20) / 120);
 
     return (
         <View style={{...style.page, paddingTop: pageStyle.paddingTop}}>
             <StatusBar />
-            <ScrollView
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-                style={{flex: 1, ...theme}}>
-                <View style={style.info}>
-                    <Image style={{...style.avator}} 
-                        source={{uri: actorData?.avatar}} />
-                    <Text style={{...style.overview, ...theme}}
-                        numberOfLines={13} 
-                        ellipsizeMode="tail">
-                        {actorData?.overview}
-                    </Text>
-                </View>
-                {loading ? <Spin /> : null}
-                <Text style={style.worksSection}>相关作品</Text>
-                <View style={style.works}>
-                    {media.map(item => <MediaCard key={item.Id} media={item} theme={theme} />)}
-                </View>
-            </ScrollView>
+            <View style={style.info}>
+                <Image style={{...style.avator}} 
+                    source={{uri: actorData?.avatar}} />
+                <Text style={{...style.overview, ...theme}}
+                    numberOfLines={13} 
+                    ellipsizeMode="tail">
+                    {actorData?.overview}
+                </Text>
+            </View>
+            {loading ? <Spin /> : null}
+            {media?.length >= 0 ?
+            <Text style={{...style.worksSection, ...theme}}>相关作品</Text>
+            : null}
+            {media?.length  > 0 ?
+            <ListView items={media}
+                style={{width: '100%', flex: 1, padding: 10}}
+                render={item => <MediaCard media={item} theme={theme} />}
+                layoutForType={(item, dim) => {
+                    dim.width = rowItemWidth
+                    dim.height = 200
+                }}
+            />
+            : null }
         </View>
     )
 }

@@ -2,6 +2,9 @@ import { StatusBar } from "@view/StatusBar";
 import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
 import { useEffect, useRef } from "react";
 import { useAppSelector } from "@hook/store";
+import { Video } from "@view/Video";
+import { selectThemedPageStyle } from "@store/themeSlice";
+import { Dev } from "@helper/dev";
 
 const style = StyleSheet.create({
     page: {
@@ -16,8 +19,9 @@ const style = StyleSheet.create({
 export function Page() {
     const ref= useRef<any>(null);
     const videoRef = useRef<any>(null);
-    const barStyle = useAppSelector(state => state.theme.barStyle);
-    const url = "https://drive.endemy.me/iplay/hexo1.mp4"
+    const pageStyle = useAppSelector(selectThemedPageStyle)
+    const url = Dev.videoUrl
+    
     useEffect(() => {
         return () => {
             console.log(`unmount`, ref.current)
@@ -26,7 +30,7 @@ export function Page() {
     }, [])
 
     return (
-        <SafeAreaView style={style.page}>
+        <View style={{...style.page, ...pageStyle}}>
             <StatusBar />
             <ScrollView
                 contentInsetAdjustmentBehavior="automatic"
@@ -34,9 +38,9 @@ export function Page() {
                 showsVerticalScrollIndicator={false}
                 style={{flex: 1}}>
                 <View>
-                    {/* <Video style={style.video} source={{uri: url, title: "ABC"}} /> */}
+                    <Video style={style.video} source={{uri: url, title: "Breaking Bad"}} />
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </View>
     )
 }

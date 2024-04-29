@@ -4,7 +4,7 @@ import { useAppSelector } from "@hook/store";
 import { Media } from "@model/Media";
 import { selectThemeBasicStyle, selectThemedPageStyle } from "@store/themeSlice";
 import { MediaCard } from "@view/MediaCard";
-import { Spin } from "@view/Spin";
+import { Spin, SpinBox } from "@view/Spin";
 import { StatusBar } from "@view/StatusBar";
 import { useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -32,7 +32,7 @@ const style = StyleSheet.create({
         flexDirection: "row",
         flexWrap: "wrap",
         alignContent: "flex-start",
-        justifyContent: "space-between",
+        justifyContent: "flex-start",
         paddingLeft: 10,
         paddingRight: 10,
     },
@@ -45,14 +45,16 @@ export function Page(props: PropsWithNavigation<"default">) {
     const [loading, setLoading] = useState(false)
     const [favoriteMovies, setFavoriteMovies] = useState<Media[]>([])
     const [favoriteEpisodes, setFavoriteEpisodes] = useState<Media[]>([])
+    const [favoriteSeries, setFavoriteSeries] = useState<Media[]>([])
     const pageStyle = useAppSelector(selectThemedPageStyle)
     const fetchFavoriteItems = () => {
         Promise.all(
-            ["Movie", "Episode"].map((type: any) => emby?.getItem?.({type, Filters: "IsFavorite"}))
+            ["Movie", "Episode", "Series"].map((type: any) => emby?.getItem?.({type, Filters: "IsFavorite"}))
         ).then(result => {
             result.forEach((res, idx) => {
                 if (idx === 0) setFavoriteMovies(res?.Items ?? [])
                 else if (idx === 1) setFavoriteEpisodes(res?.Items ?? [])
+                else if (idx === 2) setFavoriteSeries(res?.Items ?? [])      
             })
         })
         .catch(printException)
@@ -82,7 +84,7 @@ export function Page(props: PropsWithNavigation<"default">) {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 style={{flex: 1}}>
                 {loading ? 
-                <Spin color={theme.color} /> 
+                <SpinBox color={theme.color} style={{minHeight: 28}} /> 
                 : null}
                 <View>
                     {favoriteMovies.length > 0 ? 
@@ -90,14 +92,29 @@ export function Page(props: PropsWithNavigation<"default">) {
                     : null}
                     <View style={style.movieList}>
                     {favoriteMovies.map((movie, idx) => 
-                        <MediaCard key={idx} media={movie} theme={theme} />)}
+                        <MediaCard key={idx} 
+                            media={movie} 
+                            theme={theme} />)}
                     </View>
+                    
+                    {favoriteSeries.length > 0 ?
+                    <Text style={{...style.sectionTitle, ...theme}}>喜爱的电视</Text>
+                    : null}
+                    <View style={style.movieList}>
+                    {favoriteSeries.map((movie, idx) => 
+                        <MediaCard key={idx} 
+                            media={movie} 
+                            theme={theme} />)}
+                    </View>
+
                     {favoriteEpisodes.length > 0 ?
                     <Text style={{...style.sectionTitle, ...theme}}>喜爱的剧集</Text>
                     : null}
                     <View style={style.episodeList}>
                     {favoriteEpisodes.map((episode, idx) => 
-                        <MediaCard key={idx} media={episode} theme={theme} />)}
+                        <MediaCard key={idx} 
+                            media={episode} 
+                            theme={theme} />)}
                     </View>
                 </View>
             </ScrollView>
